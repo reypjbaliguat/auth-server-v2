@@ -1,0 +1,6 @@
+Run for Dev
+npx ts-node src/server.ts
+
+Run for Prod
+npx tsc
+node dist/server.js
