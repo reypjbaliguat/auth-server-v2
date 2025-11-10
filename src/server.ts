@@ -1,12 +1,13 @@
 import dotenv from "dotenv";
 import express, { Request, Response } from "express";
 import mongoose from "mongoose";
+import authRoutes from "./routes/authRoutes";
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
-
+app.use("/api/auth", authRoutes);
 app.get("/api/health", (req: Request, res: Response) => {
   res.status(200).json({ status: "OK", timestamp: new Date().toISOString() });
 });
