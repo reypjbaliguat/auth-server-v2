@@ -1,18 +1,11 @@
 import dotenv from "dotenv";
-import express, { Request, Response } from "express";
 import mongoose from "mongoose";
-import authRoutes from "./routes/authRoutes";
+import app from "./app";
 
 dotenv.config();
 
-const app = express();
-app.use(express.json());
-app.use("/v1/api/auth", authRoutes);
-app.get("/v1/api/health", (req: Request, res: Response) => {
-  res.status(200).json({ status: "OK", timestamp: new Date().toISOString() });
-});
+const PORT = process.env.PORT || 5000;
 
-const PORT = 5000;
 mongoose
   .connect(process.env.MONGO_URI!)
   .then(() => {
