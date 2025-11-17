@@ -5,10 +5,6 @@ import User from "../../models/User";
 import { hashPassword } from "../../utils/hashPassword";
 import "../setup/db";
 
-jest.mock("../../utils/sendEmail", () => ({
-  sendEmail: jest.fn().mockResolvedValue(true),
-}));
-
 describe("Auth Routes - Request OTP", () => {
   let userEmail = "javapisonet1@gmail.com";
   let userPassword = "TestPassword123";

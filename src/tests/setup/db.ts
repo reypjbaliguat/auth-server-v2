@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import Credential from "../../models/Credential";
+import OTP from "../../models/OTP";
 import User from "../../models/User";
 dotenv.config();
 
@@ -12,6 +13,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await User.deleteMany({});
   await Credential.deleteMany({});
+  await OTP.deleteMany({});
 });
 
 afterAll(async () => {

@@ -100,7 +100,7 @@ export const verifyUserOTP = async (req: Request, res: Response) => {
   const accessToken = generateAccessToken(user._id.toString());
   const refreshToken = generateRefreshToken(user._id.toString());
 
-  res.json({ accessToken, refreshToken });
+  res.status(200).json({ accessToken, refreshToken });
 };
 
 // Google Login
