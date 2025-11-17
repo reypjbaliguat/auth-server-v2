@@ -48,7 +48,7 @@ export const login = async (req: Request, res: Response) => {
     const accessToken = generateAccessToken(user._id.toString());
     const refreshToken = generateRefreshToken(user._id.toString());
 
-    res.json({ accessToken, refreshToken });
+    res.status(200).json({ accessToken, refreshToken });
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
