@@ -45,10 +45,36 @@ export const login = async (req: Request, res: Response) => {
     const valid = await comparePassword(password, credential.passwordHash);
     if (!valid) return res.status(401).json({ message: "Invalid password" });
 
-    const accessToken = generateAccessToken(user._id.toString());
-    const refreshToken = generateRefreshToken(user._id.toString());
+    // Check for existing valid OTP first
+    let existingOTP = await OTP.findOne({
+      userId: user._id,
+      used: false,
+      expiresAt: { $gt: new Date() },
+    });
 
-    res.status(200).json({ accessToken, refreshToken });
+    let otp: string;
+
+    if (existingOTP) {
+      // Reuse existing OTP - generate new OTP and update record
+      const { otp: newOtp, hash: newHash } = await createOTP();
+      existingOTP.otpHash = newHash;
+      existingOTP.expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+      await existingOTP.save();
+      otp = newOtp;
+    } else {
+      // Create new OTP
+      const { otp: newOtp, hash } = await createOTP();
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+      await OTP.create({ userId: user._id, otpHash: hash, expiresAt });
+      otp = newOtp;
+    }
+
+    await sendEmail(
+      user.email,
+      "Your Login OTP",
+      `Your verification code is ${otp}`
+    );
+    res.status(200).json({ message: "OTP sent to your email" });
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
@@ -68,10 +94,29 @@ export const requestOTP = async (req: Request, res: Response) => {
   const valid = await comparePassword(password, credential.passwordHash);
   if (!valid) return res.status(401).json({ message: "Invalid password" });
 
-  // Generate & store OTP
-  const { otp, hash } = await createOTP();
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
-  await OTP.create({ userId: user._id, otpHash: hash, expiresAt });
+  // Check for existing valid OTP first
+  let existingOTP = await OTP.findOne({
+    userId: user._id,
+    used: false,
+    expiresAt: { $gt: new Date() },
+  });
+
+  let otp: string;
+
+  if (existingOTP) {
+    // Reuse existing OTP - generate new OTP and update record
+    const { otp: newOtp, hash: newHash } = await createOTP();
+    existingOTP.otpHash = newHash;
+    existingOTP.expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    await existingOTP.save();
+    otp = newOtp;
+  } else {
+    // Create new OTP
+    const { otp: newOtp, hash } = await createOTP();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    await OTP.create({ userId: user._id, otpHash: hash, expiresAt });
+    otp = newOtp;
+  }
 
   await sendEmail(
     user.email,
@@ -86,11 +131,11 @@ export const verifyUserOTP = async (req: Request, res: Response) => {
   const { email, otp } = req.body;
   const user = await User.findOne({ email });
   if (!user) return res.status(404).json({ message: "User not found" });
-
+  console.log("Verifying OTP for:", email);
   const record = await OTP.findOne({ userId: user._id, used: false });
   if (!record || record.expiresAt < new Date())
     return res.status(400).json({ message: "OTP expired or invalid" });
-
+  console.log(otp, record.otpHash);
   const valid = await verifyOTP(otp, record.otpHash);
   if (!valid) return res.status(400).json({ message: "Incorrect OTP" });
 
@@ -100,7 +145,7 @@ export const verifyUserOTP = async (req: Request, res: Response) => {
   const accessToken = generateAccessToken(user._id.toString());
   const refreshToken = generateRefreshToken(user._id.toString());
 
-  res.status(200).json({ accessToken, refreshToken });
+  res.status(200).json({ accessToken, refreshToken, user });
 };
 
 // Google Login

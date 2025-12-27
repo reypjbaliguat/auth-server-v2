@@ -3,7 +3,15 @@ import express from "express";
 import authRoutes from "./routes/authRoutes";
 
 const app = express();
-app.use(cors());
+// Configure CORS for a specific origin and allow credentials
+app.use(
+  cors({
+    origin: "http://localhost:3000", // Explicitly allow your frontend's origin
+    credentials: true, // Allow cookies, authorization headers, etc.
+    methods: ["GET", "POST", "PUT", "DELETE"], // Specify allowed methods
+    allowedHeaders: ["Content-Type", "Authorization"], // Specify allowed headers
+  })
+);
 
 app.use(express.json());
 app.use("/v1/api/auth", authRoutes);
