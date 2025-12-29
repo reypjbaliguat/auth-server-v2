@@ -13,6 +13,6 @@ router.post("/register", register);
 router.post("/login", login);
 router.post("/request-otp", requestOTP);
 router.post("/verify-otp", verifyUserOTP);
-router.post("/google", googleLogin);
+router.post("/google-login", googleLogin);
 
 export default router;

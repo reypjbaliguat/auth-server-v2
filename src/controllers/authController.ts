@@ -17,8 +17,21 @@ export const register = async (req: Request, res: Response) => {
     const { email, password } = req.body;
 
     const existing = await User.findOne({ email });
-    if (existing)
-      return res.status(400).json({ message: "Email already exists" });
+    if (existing) {
+      // Check if they only have social login (no password set)
+      const hasPassword = await Credential.findOne({ userId: existing._id });
+      if (!hasPassword) {
+        // User exists with social login only, allow adding password
+        const passwordHash = await hashPassword(password);
+        await Credential.create({ userId: existing._id, passwordHash });
+        return res.status(200).json({
+          message: "Password added to your existing account successfully",
+        });
+      }
+      return res
+        .status(400)
+        .json({ message: "Email already exists with password login" });
+    }
 
     const user = await User.create({ email });
     const passwordHash = await hashPassword(password);
@@ -27,6 +40,7 @@ export const register = async (req: Request, res: Response) => {
 
     res.status(201).json({ message: "User registered successfully" });
   } catch (err) {
+    console.error("Registration error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -149,29 +163,77 @@ export const verifyUserOTP = async (req: Request, res: Response) => {
 };
 
 // Google Login
+// Updated backend Google login controller
 export const googleLogin = async (req: Request, res: Response) => {
+  console.log("Google login attempt");
   const { credential } = req.body;
+
+  // Input validation
+  if (!credential) {
+    return res.status(400).json({
+      message: "Google credential is required",
+    });
+  }
+
   try {
+    // Verify Google token
     const googleRes = await axios.get(
-      `https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`,
+      { timeout: 5000 } // Add timeout for external API calls
     );
-    const { email, sub, name, picture } = googleRes.data;
+
+    const { email, sub, name, picture, email_verified } = googleRes.data;
+
+    // Validate required fields from Google response
+    if (!email || !sub) {
+      return res.status(400).json({
+        message: "Invalid Google credential - missing required user data",
+      });
+    }
+
+    // Only allow verified email addresses
+    if (!email_verified) {
+      return res.status(400).json({
+        message: "Google account email is not verified",
+      });
+    }
 
     let provider = await AuthProvider.findOne({
       provider: "google",
       providerUserId: sub,
     });
+
     let user;
+    let isNewUser = false;
+    let isLinkedAccount = false;
 
     if (!provider) {
+      // Check if user already exists with this email
       user = await User.findOne({ email });
+
       if (!user) {
+        // Create new user
+        isNewUser = true;
         user = await User.create({
           email,
           emailVerified: true,
-          profile: { firstName: name, avatarUrl: picture },
+          profile: {
+            firstName: name?.split(" ")[0] || "User", // Extract first name
+            lastName: name?.split(" ").slice(1).join(" ") || "", // Extract last name
+            avatarUrl: picture,
+          },
         });
+      } else {
+        // User exists but doesn't have Google provider linked
+        isLinkedAccount = true;
+        // Update email verification status if not already verified
+        if (!user.emailVerified) {
+          user.emailVerified = true;
+          await user.save();
+        }
       }
+
+      // Create auth provider entry
       provider = await AuthProvider.create({
         userId: user._id,
         provider: "google",
@@ -179,13 +241,58 @@ export const googleLogin = async (req: Request, res: Response) => {
         email,
       });
     } else {
+      // Existing Google provider, get user
       user = await User.findById(provider.userId);
+
+      if (!user) {
+        return res.status(400).json({
+          message: "User account not found",
+        });
+      }
     }
 
-    const accessToken = generateAccessToken(user!._id.toString());
-    const refreshToken = generateRefreshToken(user!._id.toString());
-    res.json({ accessToken, refreshToken });
+    // Generate tokens
+    const accessToken = generateAccessToken(user._id.toString());
+    const refreshToken = generateRefreshToken(user._id.toString());
+
+    // Return tokens and user data with appropriate message
+    const responseMessage = isNewUser
+      ? "Account created successfully with Google"
+      : isLinkedAccount
+      ? "Google account linked to your existing account"
+      : "Login successful";
+
+    // Return tokens and user data (consistent with your OTP verification response)
+    res.json({
+      accessToken,
+      refreshToken,
+      message: responseMessage,
+      user: {
+        id: user._id,
+        email: user.email,
+        emailVerified: user.emailVerified,
+        profile: user.profile,
+        // Add any other user fields you need
+      },
+    });
   } catch (err) {
-    res.status(400).json({ message: "Invalid Google credential" });
+    console.error("Google login error:", err);
+
+    // Handle different types of errors appropriately
+    if (axios.isAxiosError(err)) {
+      if (err.response?.status === 400) {
+        return res.status(400).json({
+          message: "Invalid Google credential",
+        });
+      }
+      return res.status(500).json({
+        message: "Failed to verify Google credential",
+      });
+    }
+
+    // Database or other errors
+    res.status(500).json({
+      message: "Authentication failed. Please try again.",
+    });
   }
 };
