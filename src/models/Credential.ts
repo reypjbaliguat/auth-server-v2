@@ -5,7 +5,7 @@ const CredentialSchema = new Schema({
   // Type of credential: 'password' | 'google' | 'microsoft' | 'saml' | etc.
   type: {
     type: String,
-    enum: ["password", "google", "microsoft", "saml"],
+    enum: ["password", "google"],
     required: true,
     default: "password",
   },
