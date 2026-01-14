@@ -1,6 +1,5 @@
 import axios from "axios";
 import { Request, Response } from "express";
-import AuthProvider from "../models/AuthProvider";
 import Credential from "../models/Credential";
 import OTP from "../models/OTP";
 import User from "../models/User";
@@ -15,15 +14,21 @@ import { sendEmail } from "../utils/sendEmail";
 export const register = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
-
     const existing = await User.findOne({ email });
     if (existing) {
       // Check if they only have social login (no password set)
-      const hasPassword = await Credential.findOne({ userId: existing._id });
+      const hasPassword = await Credential.findOne({
+        userId: existing._id,
+        type: "password",
+      });
       if (!hasPassword) {
         // User exists with social login only, allow adding password
         const passwordHash = await hashPassword(password);
-        await Credential.create({ userId: existing._id, passwordHash });
+        await Credential.create({
+          userId: existing._id,
+          passwordHash,
+          type: "password",
+        });
         return res.status(200).json({
           message: "Password added to your existing account successfully",
         });
@@ -36,9 +41,41 @@ export const register = async (req: Request, res: Response) => {
     const user = await User.create({ email });
     const passwordHash = await hashPassword(password);
 
-    await Credential.create({ userId: user._id, passwordHash });
+    await Credential.create({
+      userId: user._id,
+      passwordHash,
+      type: "password",
+    });
+    // Check for existing valid OTP first
+    let existingOTP = await OTP.findOne({
+      userId: user._id,
+      used: false,
+      expiresAt: { $gt: new Date() },
+    });
 
-    res.status(201).json({ message: "User registered successfully" });
+    let otp: string;
+
+    if (existingOTP) {
+      // Reuse existing OTP - generate new OTP and update record
+      const { otp: newOtp, hash: newHash } = await createOTP();
+      existingOTP.otpHash = newHash;
+      existingOTP.expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+      await existingOTP.save();
+      otp = newOtp;
+    } else {
+      // Create new OTP
+      const { otp: newOtp, hash } = await createOTP();
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+      await OTP.create({ userId: user._id, otpHash: hash, expiresAt });
+      otp = newOtp;
+    }
+
+    await sendEmail(
+      user.email,
+      "Your Login OTP",
+      `Your verification code is ${otp}`
+    );
+    res.status(200).json({ message: "OTP sent to your email" });
   } catch (err) {
     console.error("Registration error:", err);
     res.status(500).json({ message: "Server error" });
@@ -50,13 +87,20 @@ export const login = async (req: Request, res: Response) => {
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
+
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    const credential = await Credential.findOne({ userId: user._id });
+    const credential = await Credential.findOne({
+      userId: user._id,
+      type: "password",
+    });
     if (!credential)
       return res.status(400).json({ message: "Invalid credentials" });
 
-    const valid = await comparePassword(password, credential.passwordHash);
+    const valid = await comparePassword(
+      password,
+      credential.passwordHash ?? ""
+    );
     if (!valid) return res.status(401).json({ message: "Invalid password" });
 
     // Check for existing valid OTP first
@@ -101,11 +145,14 @@ export const requestOTP = async (req: Request, res: Response) => {
   const user = await User.findOne({ email });
   if (!user) return res.status(404).json({ message: "User not found" });
 
-  const credential = await Credential.findOne({ userId: user._id });
+  const credential = await Credential.findOne({
+    userId: user._id,
+    type: "password",
+  });
   if (!credential)
     return res.status(400).json({ message: "Invalid credentials" });
 
-  const valid = await comparePassword(password, credential.passwordHash);
+  const valid = await comparePassword(password, credential.passwordHash!);
   if (!valid) return res.status(401).json({ message: "Invalid password" });
 
   // Check for existing valid OTP first
@@ -145,11 +192,9 @@ export const verifyUserOTP = async (req: Request, res: Response) => {
   const { email, otp } = req.body;
   const user = await User.findOne({ email });
   if (!user) return res.status(404).json({ message: "User not found" });
-  console.log("Verifying OTP for:", email);
   const record = await OTP.findOne({ userId: user._id, used: false });
   if (!record || record.expiresAt < new Date())
     return res.status(400).json({ message: "OTP expired or invalid" });
-  console.log(otp, record.otpHash);
   const valid = await verifyOTP(otp, record.otpHash);
   if (!valid) return res.status(400).json({ message: "Incorrect OTP" });
 
@@ -198,7 +243,8 @@ export const googleLogin = async (req: Request, res: Response) => {
       });
     }
 
-    let provider = await AuthProvider.findOne({
+    let credential = await Credential.findOne({
+      type: "google",
       provider: "google",
       providerUserId: sub,
     });
@@ -207,7 +253,7 @@ export const googleLogin = async (req: Request, res: Response) => {
     let isNewUser = false;
     let isLinkedAccount = false;
 
-    if (!provider) {
+    if (!credential) {
       // Check if user already exists with this email
       user = await User.findOne({ email });
 
@@ -233,16 +279,18 @@ export const googleLogin = async (req: Request, res: Response) => {
         }
       }
 
-      // Create auth provider entry
-      provider = await AuthProvider.create({
+      // Create credential entry
+      credential = await Credential.create({
         userId: user._id,
+        type: "google",
         provider: "google",
         providerUserId: sub,
-        email,
+        providerEmail: email,
+        metadata: { name, picture },
       });
     } else {
-      // Existing Google provider, get user
-      user = await User.findById(provider.userId);
+      // Existing Google credential, get user
+      user = await User.findById(credential.userId);
 
       if (!user) {
         return res.status(400).json({

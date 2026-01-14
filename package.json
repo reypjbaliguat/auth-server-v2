@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "jest --runInBand",
-    "dev": "tsx watch src/server.ts",
+    "dev": "nodemon --exec tsx watch src/server.ts",
     "test:watch": "jest --watch --runInBand"
   },
   "keywords": [],
