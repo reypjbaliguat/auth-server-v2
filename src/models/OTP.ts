@@ -6,6 +6,7 @@ const OTPSchema = new Schema({
   expiresAt: { type: Date, required: true },
   used: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
+  lastSentAt: { type: Date, default: Date.now },
 });
 
 // TTL index so expired OTPs auto-delete

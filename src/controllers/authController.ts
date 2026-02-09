@@ -26,7 +26,7 @@ export const register = async (req: Request, res: Response) => {
     // Generate and send OTP for new user
     await otpService.generateAndSendOTP(
       result?.user?._id.toString()!,
-      result?.user?.email!
+      result?.user?.email!,
     );
 
     res.status(200).json({ message: "OTP sent to your email" });
@@ -47,15 +47,15 @@ export const login = async (req: Request, res: Response) => {
         result.error === "User not found"
           ? 404
           : result.error === "Invalid password"
-          ? 401
-          : 400;
+            ? 401
+            : 400;
       return res.status(statusCode).json({ message: result.error });
     }
 
     // Generate and send OTP
     await otpService.generateAndSendOTP(
       result.user?._id.toString()!,
-      result.user?.email!
+      result.user?.email!,
     );
 
     res.status(200).json({ message: "OTP sent to your email" });
@@ -76,7 +76,7 @@ export const verifyUserOTP = async (req: Request, res: Response) => {
 
     const isValid = await otpService.verifyAndConsumeOTP(
       user._id.toString(),
-      otp
+      otp,
     );
     if (!isValid) {
       return res.status(400).json({ message: "OTP expired or invalid" });
@@ -114,9 +114,8 @@ export const googleLogin = async (req: Request, res: Response) => {
     const tokenInfo = await googleAuthService.verifyGoogleToken(credential);
 
     // Process login
-    const { user, message } = await googleAuthService.processGoogleLogin(
-      tokenInfo
-    );
+    const { user, message } =
+      await googleAuthService.processGoogleLogin(tokenInfo);
 
     // Generate tokens
     const accessToken = generateAccessToken(user._id.toString());
@@ -147,5 +146,61 @@ export const googleLogin = async (req: Request, res: Response) => {
         : 500;
 
     res.status(statusCode).json({ message: errorMessage });
+  }
+};
+
+// Get OTP status for email - check if can resend
+export const getOTPStatus = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.params;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const status = await otpService.getOTPStatus(user._id.toString());
+
+    res.status(200).json(status);
+  } catch (err) {
+    console.error("Get OTP Status error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Resend OTP
+export const resendOTP = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const result = await otpService.resendOTP(user._id.toString(), user.email);
+
+    if (!result.success) {
+      return res.status(429).json({
+        message: result.message,
+        canResendAt: result.canResendAt,
+      });
+    }
+
+    res.status(200).json({
+      message: result.message,
+      canResendAt: result.canResendAt,
+    });
+  } catch (err) {
+    console.error("Resend OTP error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };

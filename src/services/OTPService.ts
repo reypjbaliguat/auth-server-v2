@@ -8,7 +8,7 @@ import { sendEmail } from "../utils/sendEmail";
  */
 const generateAndSendOTP = async (
   userId: string,
-  email: string
+  email: string,
 ): Promise<void> => {
   // Check for existing valid OTP first
   let existingOTP = await OTP.findOne({
@@ -24,13 +24,19 @@ const generateAndSendOTP = async (
     const { otp: newOtp, hash: newHash } = await createOTP();
     existingOTP.otpHash = newHash;
     existingOTP.expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    existingOTP.lastSentAt = new Date();
     await existingOTP.save();
     otp = newOtp;
   } else {
     // Create new OTP
     const { otp: newOtp, hash } = await createOTP();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
-    await OTP.create({ userId, otpHash: hash, expiresAt });
+    await OTP.create({
+      userId,
+      otpHash: hash,
+      expiresAt,
+      lastSentAt: new Date(),
+    });
     otp = newOtp;
   }
 
@@ -42,7 +48,7 @@ const generateAndSendOTP = async (
  */
 const verifyAndConsumeOTP = async (
   userId: string,
-  otpCode: string
+  otpCode: string,
 ): Promise<boolean> => {
   const record = await OTP.findOne({ userId, used: false });
 
@@ -63,7 +69,82 @@ const verifyAndConsumeOTP = async (
   return true;
 };
 
+/**
+ * Gets OTP status for a user - can they resend and when
+ */
+const getOTPStatus = async (
+  userId: string,
+): Promise<{
+  canResend: boolean;
+  remainingTime?: number;
+  canResendAt?: number;
+}> => {
+  const RESEND_COOLDOWN = 60; // 60 seconds cooldown
+
+  const activeOTP = await OTP.findOne({
+    userId,
+    used: false,
+    expiresAt: { $gt: new Date() },
+  });
+
+  if (!activeOTP) {
+    return { canResend: true };
+  }
+
+  const now = Date.now();
+  const lastSentAt = activeOTP.lastSentAt.getTime();
+  const timeSinceLastSent = Math.floor((now - lastSentAt) / 1000);
+
+  if (timeSinceLastSent >= RESEND_COOLDOWN) {
+    return { canResend: true };
+  }
+
+  const remainingTime = RESEND_COOLDOWN - timeSinceLastSent;
+  const canResendAt = Math.floor((lastSentAt + RESEND_COOLDOWN * 1000) / 1000);
+
+  return {
+    canResend: false,
+    remainingTime,
+    canResendAt,
+  };
+};
+
+/**
+ * Resends OTP if cooldown period has passed
+ */
+const resendOTP = async (
+  userId: string,
+  email: string,
+): Promise<{
+  success: boolean;
+  message: string;
+  canResendAt?: number;
+}> => {
+  const status = await getOTPStatus(userId);
+
+  if (!status.canResend) {
+    return {
+      success: false,
+      message: "Please wait before requesting another OTP",
+      canResendAt: status.canResendAt,
+    };
+  }
+
+  await generateAndSendOTP(userId, email);
+
+  const RESEND_COOLDOWN = 60; // 60 seconds
+  const canResendAt = Math.floor((Date.now() + RESEND_COOLDOWN * 1000) / 1000);
+
+  return {
+    success: true,
+    message: "OTP sent successfully",
+    canResendAt,
+  };
+};
+
 export const otpService = {
   generateAndSendOTP,
   verifyAndConsumeOTP,
+  getOTPStatus,
+  resendOTP,
 };
