@@ -1,5 +1,5 @@
 import request from "supertest";
-import app from "../app"; // Make sure app.ts exports your Express app
+import app from "../../app"; // Make sure app.ts exports your Express app
 
 describe("Health Check", () => {
   it("should return OK", async () => {

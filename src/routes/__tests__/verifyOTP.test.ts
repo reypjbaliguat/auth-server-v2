@@ -4,7 +4,7 @@ import app from "../../app";
 import OTP from "../../models/OTP";
 import User from "../../models/User";
 
-import "../setup/db";
+import "../../tests/setup/db";
 
 // mock token generation to avoid using real JWT
 jest.mock("../../utils/generateToken", () => ({
@@ -75,7 +75,7 @@ describe("Auth Routes - Verify OTP", () => {
       .send({ email: testEmail, otp: "999999" });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toMatch(/incorrect/i);
+    expect(res.body.message).toMatch(/OTP expired or invalid/i);
   });
 
   // -------------------------------

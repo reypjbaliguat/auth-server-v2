@@ -2,8 +2,8 @@ import request from "supertest";
 import app from "../../app";
 import Credential from "../../models/Credential";
 import User from "../../models/User";
+import "../../tests/setup/db";
 import { hashPassword } from "../../utils/hashPassword";
-import "../setup/db";
 
 describe("Auth Routes - Login", () => {
   const testUserEmail = "test@gmail.com";
@@ -15,7 +15,11 @@ describe("Auth Routes - Login", () => {
     const passwordHash = await hashPassword(testUserPassword);
 
     const user = await User.create({ email: testUserEmail });
-    await Credential.create({ userId: user._id, passwordHash });
+    await Credential.create({
+      userId: user._id,
+      passwordHash,
+      type: "password",
+    });
   });
 
   it("should send user not found if email doesn't exist", async () => {
@@ -36,13 +40,13 @@ describe("Auth Routes - Login", () => {
     expect(res.body).toHaveProperty("message");
     expect(res.body.message).toMatch(/Invalid password/i);
   });
-  it("should login successfully and return tokens", async () => {
+  it("should login successfully and send OTP", async () => {
     const res = await request(app).post("/v1/api/auth/login").send({
       email: testUserEmail,
       password: testUserPassword,
     });
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty("accessToken");
-    expect(res.body).toHaveProperty("refreshToken");
+    expect(res.body).toHaveProperty("message");
+    expect(res.body.message).toMatch(/OTP sent to your email/i);
   });
 });
