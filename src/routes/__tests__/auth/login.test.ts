@@ -1,9 +1,9 @@
 import request from "supertest";
-import app from "../../app";
-import Credential from "../../models/Credential";
-import User from "../../models/User";
-import "../../tests/setup/db";
-import { hashPassword } from "../../utils/hashPassword";
+import app from "../../../app";
+import Credential from "../../../models/Credential";
+import User from "../../../models/User";
+import "../../../tests/setup/db";
+import { hashPassword } from "../../../utils/hashPassword";
 
 describe("Auth Routes - Login", () => {
   const testUserEmail = "test@gmail.com";

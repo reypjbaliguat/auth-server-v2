@@ -1,13 +1,13 @@
 import bcrypt from "bcryptjs";
 import request from "supertest";
-import app from "../../app";
-import OTP from "../../models/OTP";
-import User from "../../models/User";
+import app from "../../../app";
+import OTP from "../../../models/OTP";
+import User from "../../../models/User";
 
-import "../../tests/setup/db";
+import "../../../tests/setup/db";
 
 // mock token generation to avoid using real JWT
-jest.mock("../../utils/generateToken", () => ({
+jest.mock("../../../utils/generateToken", () => ({
   generateAccessToken: jest.fn(() => "mockAccessToken"),
   generateRefreshToken: jest.fn(() => "mockRefreshToken"),
 }));

@@ -1,7 +1,7 @@
 import request from "supertest";
-import app from "../../app";
-import User from "../../models/User";
-import "../../tests/setup/db";
+import app from "../../../app";
+import User from "../../../models/User";
+import "../../../tests/setup/db";
 
 describe("Auth Routes - Register", () => {
   const testUserEmail = "test.register@gmail.com";
