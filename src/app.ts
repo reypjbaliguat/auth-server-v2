@@ -4,13 +4,20 @@ import authRoutes from "./routes/authRoutes";
 
 const app = express();
 // Configure CORS for a specific origin and allow credentials
+
+//add production url to allowed origins
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://auth-client-v2-4zfv-git-main-reypjbaliguats-projects.vercel.app",
+  "https://auth-client-v2-4zfv.vercel.app",
+];
 app.use(
   cors({
-    origin: "http://localhost:3000", // Explicitly allow your frontend's origin
+    origin: allowedOrigins, // Explicitly allow your frontend's origin
     credentials: true, // Allow cookies, authorization headers, etc.
     methods: ["GET", "POST", "PUT", "DELETE"], // Specify allowed methods
     allowedHeaders: ["Content-Type", "Authorization"], // Specify allowed headers
-  })
+  }),
 );
 
 app.use(express.json());
