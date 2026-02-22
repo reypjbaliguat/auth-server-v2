@@ -8,7 +8,7 @@
     "dev": "nodemon --exec tsx watch src/server.ts",
     "test:watch": "jest --watch --runInBand",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/app.js"
   },
   "keywords": [],
   "author": "",
