@@ -52,7 +52,7 @@ const registerUser = async (email: string, password: string) => {
       return {
         success: true,
         user: existing,
-        message: "Password added to your existing account successfully",
+        message: "Password added to your existing account successfully.",
       };
     }
 
