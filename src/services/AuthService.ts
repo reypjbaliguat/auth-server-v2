@@ -74,7 +74,71 @@ const registerUser = async (email: string, password: string) => {
   return { success: true, user };
 };
 
+/**
+ * Initiates password reset process for a user
+ */
+const initiatePasswordReset = async (email: string) => {
+  const user = await User.findOne({ email: email.toLowerCase() });
+
+  if (!user) {
+    return { success: false, error: "User not found" };
+  }
+
+  // Check if user has a password credential (not just social login)
+  const credential = await Credential.findOne({
+    userId: user._id,
+    type: "password",
+  });
+
+  if (!credential) {
+    return {
+      success: false,
+      error:
+        "This account uses social login. Please sign in with your social account.",
+    };
+  }
+
+  if (!user.isActive) {
+    return { success: false, error: "Account is deactivated" };
+  }
+
+  return { success: true, user };
+};
+
+/**
+ * Resets user password after OTP verification
+ */
+const resetPassword = async (email: string, newPassword: string) => {
+  const user = await User.findOne({ email: email.toLowerCase() });
+
+  if (!user) {
+    return { success: false, error: "User not found" };
+  }
+
+  // Check if user has a password credential
+  const credential = await Credential.findOne({
+    userId: user._id,
+    type: "password",
+  });
+
+  if (!credential) {
+    return {
+      success: false,
+      error: "This account uses social login. Cannot reset password.",
+    };
+  }
+
+  // Update password
+  const passwordHash = await hashPassword(newPassword);
+  credential.passwordHash = passwordHash;
+  await credential.save();
+
+  return { success: true, user };
+};
+
 export const authService = {
   validateCredentials,
   registerUser,
+  initiatePasswordReset,
+  resetPassword,
 };

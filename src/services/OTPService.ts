@@ -44,6 +44,49 @@ const generateAndSendOTP = async (
 };
 
 /**
+ * Generates and sends password reset OTP to user's email
+ */
+const generateAndSendPasswordResetOTP = async (
+  userId: string,
+  email: string,
+): Promise<void> => {
+  // Check for existing valid OTP first
+  let existingOTP = await OTP.findOne({
+    userId,
+    used: false,
+    expiresAt: { $gt: new Date() },
+  });
+
+  let otp: string;
+
+  if (existingOTP) {
+    // Reuse existing OTP - generate new OTP and update record
+    const { otp: newOtp, hash: newHash } = await createOTP();
+    existingOTP.otpHash = newHash;
+    existingOTP.expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes for password reset
+    existingOTP.lastSentAt = new Date();
+    await existingOTP.save();
+    otp = newOtp;
+  } else {
+    // Create new OTP
+    const { otp: newOtp, hash } = await createOTP();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes for password reset
+    await OTP.create({
+      userId,
+      otpHash: hash,
+      expiresAt,
+      lastSentAt: new Date(),
+    });
+    otp = newOtp;
+  }
+
+  const resetEmailSubject = "Password Reset Request";
+  const resetEmailText = `We received a request to reset your password. Your verification code is: ${otp}. This code will expire in 10 minutes. If you didn't request this password reset, please ignore this email.`;
+
+  await sendEmail(email, resetEmailSubject, resetEmailText);
+};
+
+/**
  * Verifies OTP and marks it as used
  */
 const verifyAndConsumeOTP = async (
@@ -144,6 +187,7 @@ const resendOTP = async (
 
 export const otpService = {
   generateAndSendOTP,
+  generateAndSendPasswordResetOTP,
   verifyAndConsumeOTP,
   getOTPStatus,
   resendOTP,

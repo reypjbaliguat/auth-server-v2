@@ -113,15 +113,15 @@ export const googleLogin = async (req: Request, res: Response) => {
     // Verify Google token
     const tokenInfo = await googleAuthService.verifyGoogleToken(credential);
 
-    // Process login
-    const { user, message } =
-      await googleAuthService.processGoogleLogin(tokenInfo);
+    // Process login with enhanced account linking
+    const result = await googleAuthService.processGoogleLogin(tokenInfo);
+    const { user, message, metadata } = result;
 
     // Generate tokens
     const accessToken = generateAccessToken(user._id.toString());
     const refreshToken = generateRefreshToken(user._id.toString());
 
-    // Return tokens and user data
+    // Return comprehensive response with linking information
     res.json({
       accessToken,
       refreshToken,
@@ -131,6 +131,12 @@ export const googleLogin = async (req: Request, res: Response) => {
         email: user.email,
         emailVerified: user.emailVerified,
         profile: user.profile,
+      },
+      // Provide metadata for client-side UX decisions
+      accountLinking: {
+        isNewUser: metadata?.isNewUser || false,
+        isLinkedAccount: metadata?.isLinkedAccount || false,
+        profileUpdated: metadata?.profileUpdated || false,
       },
     });
   } catch (err) {
@@ -201,6 +207,76 @@ export const resendOTP = async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error("Resend OTP error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Forgot Password - Send password reset OTP
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const result = await authService.initiatePasswordReset(email);
+
+    if (!result.success) {
+      const statusCode = result.error === "User not found" ? 404 : 400;
+      return res.status(statusCode).json({ message: result.error });
+    }
+
+    // Generate and send password reset OTP
+    await otpService.generateAndSendPasswordResetOTP(
+      result.user?._id.toString()!,
+      result.user?.email!,
+    );
+
+    res.status(200).json({ message: "Password reset code sent to your email" });
+  } catch (err) {
+    console.error("Forgot password error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Reset Password - Verify OTP and update password
+export const resetPassword = async (req: Request, res: Response) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({
+        message: "Email, OTP, and new password are required",
+      });
+    }
+
+    // Find user
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Verify OTP
+    const isValidOTP = await otpService.verifyAndConsumeOTP(
+      user._id.toString(),
+      otp,
+    );
+
+    if (!isValidOTP) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    // Reset password
+    const resetResult = await authService.resetPassword(email, newPassword);
+
+    if (!resetResult.success) {
+      return res.status(400).json({ message: resetResult.error });
+    }
+
+    res.status(200).json({ message: "Password reset successfully" });
+  } catch (err) {
+    console.error("Reset password error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };

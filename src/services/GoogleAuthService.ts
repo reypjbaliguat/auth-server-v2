@@ -14,12 +14,12 @@ interface GoogleTokenInfo {
  * Verifies Google credential token
  */
 const verifyGoogleToken = async (
-  credential: string
+  credential: string,
 ): Promise<GoogleTokenInfo> => {
   try {
     const googleRes = await axios.get(
       `https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`,
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
 
     const { email, sub, name, picture, email_verified } = googleRes.data;
@@ -46,6 +46,7 @@ const verifyGoogleToken = async (
 
 /**
  * Handles Google login process - finds existing user or creates new one
+ * Implements secure account linking with profile data merging
  */
 const processGoogleLogin = async (tokenInfo: GoogleTokenInfo) => {
   const { email, sub, name, picture } = tokenInfo;
@@ -59,6 +60,7 @@ const processGoogleLogin = async (tokenInfo: GoogleTokenInfo) => {
   let user;
   let isNewUser = false;
   let isLinkedAccount = false;
+  let profileUpdated = false;
 
   if (!credential) {
     // Check if user already exists with this email
@@ -73,28 +75,76 @@ const processGoogleLogin = async (tokenInfo: GoogleTokenInfo) => {
         profile: {
           firstName: name?.split(" ")[0] || "User",
           lastName: name?.split(" ").slice(1).join(" ") || "",
-          avatarUrl: picture,
+          avatarUrl: picture || "",
         },
       });
     } else {
       // User exists but doesn't have Google provider linked
       isLinkedAccount = true;
+
+      // Check if user account is active
+      if (!user.isActive) {
+        throw new Error("Account is deactivated. Please contact support.");
+      }
+
       // Update email verification status if not already verified
       if (!user.emailVerified) {
         user.emailVerified = true;
+        profileUpdated = true;
+      }
+
+      // Smart profile data merging - only update if current data is empty/default
+      const shouldUpdateProfile =
+        !user.profile.firstName ||
+        user.profile.firstName === "User" ||
+        !user.profile.avatarUrl;
+
+      if (shouldUpdateProfile && name) {
+        const [firstName, ...lastNameParts] = name.split(" ");
+
+        // Only update if we have better data
+        if (!user.profile.firstName || user.profile.firstName === "User") {
+          user.profile.firstName = firstName;
+          profileUpdated = true;
+        }
+
+        if (!user.profile.lastName && lastNameParts.length > 0) {
+          user.profile.lastName = lastNameParts.join(" ");
+          profileUpdated = true;
+        }
+
+        if (!user.profile.avatarUrl && picture) {
+          user.profile.avatarUrl = picture;
+          profileUpdated = true;
+        }
+      }
+
+      if (profileUpdated) {
         await user.save();
       }
     }
 
-    // Create credential entry
+    // Create credential entry with enhanced metadata
     credential = await Credential.create({
       userId: user._id,
       type: "google",
       provider: "google",
       providerUserId: sub,
       providerEmail: email,
-      metadata: { name, picture },
+      metadata: {
+        name,
+        picture,
+        linkedAt: new Date(),
+        accountLinking: isLinkedAccount,
+      },
     });
+
+    // Log account linking for security monitoring
+    if (isLinkedAccount) {
+      console.log(
+        `Account linking: Google account linked to existing user ${user._id} (${email})`,
+      );
+    }
   } else {
     // Existing Google credential, get user
     user = await User.findById(credential.userId);
@@ -102,15 +152,56 @@ const processGoogleLogin = async (tokenInfo: GoogleTokenInfo) => {
     if (!user) {
       throw new Error("User account not found");
     }
+
+    if (!user.isActive) {
+      throw new Error("Account is deactivated. Please contact support.");
+    }
+
+    // Update Google profile data if it has changed
+    const currentMetadata = credential.metadata as any;
+    if (currentMetadata?.picture !== picture && picture) {
+      credential.metadata = {
+        ...currentMetadata,
+        picture,
+        name,
+        lastUpdated: new Date(),
+      };
+      await credential.save();
+
+      // Update user avatar if they don't have one or it's the old Google avatar
+      if (
+        !user.profile.avatarUrl ||
+        user.profile.avatarUrl === currentMetadata?.picture
+      ) {
+        user.profile.avatarUrl = picture;
+        await user.save();
+        profileUpdated = true;
+      }
+    }
   }
 
-  const responseMessage = isNewUser
-    ? "Account created successfully with Google"
-    : isLinkedAccount
-    ? "Google account linked to your existing account"
-    : "Login successful";
+  // Generate appropriate response message
+  let responseMessage = "Login successful";
 
-  return { user, message: responseMessage };
+  if (isNewUser) {
+    responseMessage = "Account created successfully with Google";
+  } else if (isLinkedAccount) {
+    responseMessage = profileUpdated
+      ? "Google account linked and profile updated"
+      : "Google account linked to your existing account";
+  } else if (profileUpdated) {
+    responseMessage = "Login successful - profile updated";
+  }
+
+  return {
+    user,
+    message: responseMessage,
+    metadata: {
+      isNewUser,
+      isLinkedAccount,
+      profileUpdated,
+    },
+  };
 };
 
 export const googleAuthService = {
