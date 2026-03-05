@@ -339,6 +339,11 @@ describe("AuthController", () => {
       mockGoogleAuthService.processGoogleLogin.mockResolvedValue({
         user: mockUser,
         message: "Login successful",
+        metadata: {
+          isNewUser: false,
+          isLinkedAccount: false,
+          profileUpdated: false,
+        },
       });
       mockGenerateAccessToken.mockReturnValue("access-token");
       mockGenerateRefreshToken.mockReturnValue("refresh-token");
