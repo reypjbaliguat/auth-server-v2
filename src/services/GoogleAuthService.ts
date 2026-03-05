@@ -93,6 +93,15 @@ const processGoogleLogin = async (tokenInfo: GoogleTokenInfo) => {
         profileUpdated = true;
       }
 
+      // Ensure profile object exists
+      if (!user.profile) {
+        user.profile = {
+          firstName: "",
+          lastName: "",
+          avatarUrl: "",
+        };
+      }
+
       // Smart profile data merging - only update if current data is empty/default
       const shouldUpdateProfile =
         !user.profile.firstName ||
@@ -167,6 +176,15 @@ const processGoogleLogin = async (tokenInfo: GoogleTokenInfo) => {
         lastUpdated: new Date(),
       };
       await credential.save();
+
+      // Ensure profile object exists
+      if (!user.profile) {
+        user.profile = {
+          firstName: "",
+          lastName: "",
+          avatarUrl: "",
+        };
+      }
 
       // Update user avatar if they don't have one or it's the old Google avatar
       if (

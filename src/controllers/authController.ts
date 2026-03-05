@@ -243,9 +243,9 @@ export const forgotPassword = async (req: Request, res: Response) => {
 // Reset Password - Verify OTP and update password
 export const resetPassword = async (req: Request, res: Response) => {
   try {
-    const { email, otp, newPassword } = req.body;
+    const { email, otp, password } = req.body;
 
-    if (!email || !otp || !newPassword) {
+    if (!email || !otp || !password) {
       return res.status(400).json({
         message: "Email, OTP, and new password are required",
       });
@@ -268,7 +268,7 @@ export const resetPassword = async (req: Request, res: Response) => {
     }
 
     // Reset password
-    const resetResult = await authService.resetPassword(email, newPassword);
+    const resetResult = await authService.resetPassword(email, password);
 
     if (!resetResult.success) {
       return res.status(400).json({ message: resetResult.error });
