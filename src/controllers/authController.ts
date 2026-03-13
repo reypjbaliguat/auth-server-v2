@@ -46,7 +46,7 @@ export const login = async (req: Request, res: Response) => {
       const statusCode =
         result.error === "User not found"
           ? 404
-          : result.error === "Invalid password"
+          : result.error === "Invalid credentials"
             ? 401
             : 400;
       return res.status(statusCode).json({ message: result.error });

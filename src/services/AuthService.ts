@@ -22,7 +22,7 @@ const validateCredentials = async (email: string, password: string) => {
 
   const valid = await comparePassword(password, credential.passwordHash ?? "");
   if (!valid) {
-    return { success: false, error: "Invalid password" };
+    return { success: false, error: "Invalid credentials" };
   }
 
   return { success: true, user };
