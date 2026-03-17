@@ -58,7 +58,8 @@ const registerUser = async (email: string, password: string) => {
 
     return {
       success: false,
-      error: "Email already exists with password login",
+      error:
+        "Email already exists with password login. Redirecting you to login.",
     };
   }
 
