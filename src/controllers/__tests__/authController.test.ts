@@ -104,7 +104,6 @@ describe("AuthController", () => {
       mockAuthService.registerUser.mockResolvedValue({
         success: true,
         user: {} as any,
-        message: "Password added to your social account",
       });
 
       await register(mockReq as Request, mockRes as Response);
