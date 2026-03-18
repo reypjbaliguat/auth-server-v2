@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import Credential from "../models/Credential";
 import User from "../models/User";
 import { authService } from "../services/AuthService";
 import { googleAuthService } from "../services/GoogleAuthService";
@@ -7,22 +8,15 @@ import {
   generateAccessToken,
   generateRefreshToken,
 } from "../utils/generateToken";
+import { hashPassword } from "../utils/hashPassword";
 
 export const register = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
-
     const result = await authService.registerUser(email, password);
-
     if (!result.success) {
       return res.status(400).json({ message: result.error });
     }
-
-    if (result.message) {
-      // Password added to existing social account
-      return res.status(200).json({ message: result.message });
-    }
-
     // Generate and send OTP for new user
     await otpService.generateAndSendOTP(
       result?.user?._id.toString()!,
@@ -277,6 +271,143 @@ export const resetPassword = async (req: Request, res: Response) => {
     res.status(200).json({ message: "Password reset successfully" });
   } catch (err) {
     console.error("Reset password error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Link Password - Send OTP to link password to existing Google account
+export const linkPassword = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    // Find user by email
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Check if user has Google account credential
+    const googleCredential = await Credential.findOne({
+      userId: user._id,
+      type: "google",
+    });
+
+    if (!googleCredential) {
+      return res.status(400).json({
+        message: "This account does not have Google authentication linked",
+      });
+    }
+
+    // Check if user already has a password credential
+    const passwordCredential = await Credential.findOne({
+      userId: user._id,
+      type: "password",
+    });
+
+    if (passwordCredential) {
+      return res.status(400).json({
+        message: "This account already has a password set",
+      });
+    }
+
+    // Generate and send OTP for password linking
+    await otpService.generateAndSendOTP(user._id.toString(), user.email);
+
+    res
+      .status(200)
+      .json({ message: "OTP sent to your email for password linking" });
+  } catch (err) {
+    console.error("Link password error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Verify Password Link - Verify OTP and link password to existing Google account
+export const verifyPasswordLink = async (req: Request, res: Response) => {
+  try {
+    const { email, otp, password } = req.body;
+
+    if (!email || !otp || !password) {
+      return res.status(400).json({
+        message: "Email, OTP, and password are required",
+      });
+    }
+
+    // Find user
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Verify that user has Google credential
+    const googleCredential = await Credential.findOne({
+      userId: user._id,
+      type: "google",
+    });
+
+    if (!googleCredential) {
+      return res.status(400).json({
+        message: "This account does not have Google authentication linked",
+      });
+    }
+
+    // Check that user doesn't already have password credential
+    const existingPasswordCredential = await Credential.findOne({
+      userId: user._id,
+      type: "password",
+    });
+
+    if (existingPasswordCredential) {
+      return res.status(400).json({
+        message: "This account already has a password set",
+      });
+    }
+
+    // Verify OTP
+    const isValidOTP = await otpService.verifyAndConsumeOTP(
+      user._id.toString(),
+      otp,
+    );
+
+    if (!isValidOTP) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    // Hash password and create password credential
+    const passwordHash = await hashPassword(password);
+    await Credential.create({
+      userId: user._id,
+      type: "password",
+      passwordHash,
+    });
+
+    // Log account linking event for security
+    console.log(
+      `Password linking: Password credential linked to Google account user ${user._id} (${email})`,
+    );
+
+    // Generate tokens
+    const accessToken = generateAccessToken(user._id.toString());
+    const refreshToken = generateRefreshToken(user._id.toString());
+
+    // Return tokens and user data
+    res.status(200).json({
+      message: "Password linked successfully to your Google account",
+      accessToken,
+      refreshToken,
+      user: {
+        id: user._id,
+        email: user.email,
+        emailVerified: user.emailVerified,
+        profile: user.profile,
+      },
+    });
+  } catch (err) {
+    console.error("Verify password link error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };

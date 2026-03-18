@@ -41,8 +41,20 @@ const registerUser = async (email: string, password: string) => {
       type: "password",
     });
 
-    if (!hasPassword) {
-      // User exists with social login only, allow adding password
+    const hasGoogleAccount = await Credential.findOne({
+      userId: existing._id,
+      type: "google",
+    });
+
+    if (hasGoogleAccount && !hasPassword) {
+      // Allow user to make decision to add password to existing social account and open modal in frontend to confirm
+      //  still send otp in case user wants to confirm adding of password to existing social account
+      return {
+        success: false,
+        error: "HAS_GOOGLE_ACCOUNT",
+      };
+    } else if (!hasGoogleAccount && !hasPassword) {
+      // create password credential for existing user without password and google account
       const passwordHash = await hashPassword(password);
       await Credential.create({
         userId: existing._id,
@@ -52,14 +64,13 @@ const registerUser = async (email: string, password: string) => {
       return {
         success: true,
         user: existing,
-        message: "Password added to your existing account successfully.",
       };
     }
 
     return {
       success: false,
       error:
-        "Email already exists with password login. Redirecting you to login.",
+        "Email already exists with password login. Redirecting you to login in 3 seconds.",
     };
   }
 
