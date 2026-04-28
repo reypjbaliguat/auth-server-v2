@@ -3,11 +3,13 @@ import {
   forgotPassword,
   getOTPStatus,
   googleLogin,
+  linkGoogleAccount,
   linkPassword,
   login,
   register,
   resendOTP,
   resetPassword,
+  verifyGoogleLink,
   verifyPasswordLink,
   verifyUserOTP,
 } from "../controllers/authController";
@@ -24,5 +26,7 @@ router.post("/forgot-password", forgotPassword);
 router.post("/reset-password", resetPassword);
 router.post("/link-password", linkPassword);
 router.post("/verify-password-link", verifyPasswordLink);
+router.post("/link-google-account", linkGoogleAccount);
+router.post("/verify-google-link", verifyGoogleLink);
 
 export default router;

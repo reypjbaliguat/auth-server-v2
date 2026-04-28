@@ -107,7 +107,33 @@ export const googleLogin = async (req: Request, res: Response) => {
     // Verify Google token
     const tokenInfo = await googleAuthService.verifyGoogleToken(credential);
 
-    // Process login with enhanced account linking
+    // Check if there's already a Google credential for this Google account
+    const existingGoogleCredential = await Credential.findOne({
+      type: "google",
+      provider: "google",
+      providerUserId: tokenInfo.sub,
+    });
+
+    if (!existingGoogleCredential) {
+      // Check if user exists with password authentication for same email
+      const existingUser = await User.findOne({ email: tokenInfo.email });
+      if (existingUser) {
+        const passwordCredential = await Credential.findOne({
+          userId: existingUser._id,
+          type: "password",
+        });
+        console.log(tokenInfo);
+        if (passwordCredential) {
+          // Password account exists - return linking opportunity instead of auto-linking
+          return res.status(400).json({
+            error: "EMAIL_EXISTS_PASSWORD",
+            email: tokenInfo.email,
+          });
+        }
+      }
+    }
+
+    // No conflict or existing Google account - proceed with normal login/linking
     const result = await googleAuthService.processGoogleLogin(tokenInfo);
     const { user, message, metadata } = result;
 
@@ -410,4 +436,271 @@ export const verifyPasswordLink = async (req: Request, res: Response) => {
     console.error("Verify password link error:", err);
     res.status(500).json({ message: "Server error" });
   }
+};
+
+// Link Google Account - Send OTP to link Google to existing password account
+export const linkGoogleAccount = async (req: Request, res: Response) => {
+  try {
+    const { credential, email } = req.body;
+
+    if (!credential || !email) {
+      return res.status(400).json({
+        message: "Google credential and email are required",
+      });
+    }
+
+    // Verify Google token first
+    const tokenInfo = await googleAuthService.verifyGoogleToken(credential);
+
+    // Ensure the Google email matches the provided email
+    if (tokenInfo.email.toLowerCase() !== email.toLowerCase()) {
+      return res.status(400).json({
+        message: "Google account email does not match the provided email",
+      });
+    }
+
+    // Find user by email
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Check if user has password credential
+    const passwordCredential = await Credential.findOne({
+      userId: user._id,
+      type: "password",
+    });
+
+    if (!passwordCredential) {
+      return res.status(400).json({
+        message:
+          "This account does not have password authentication. Use Google sign-in instead.",
+      });
+    }
+
+    // Check if user already has Google credential
+    const existingGoogleCredential = await Credential.findOne({
+      userId: user._id,
+      type: "google",
+    });
+
+    if (existingGoogleCredential) {
+      return res.status(400).json({
+        message: "This account already has Google authentication linked",
+      });
+    }
+
+    // Check if this Google account is already linked to another user
+    const googleCredentialExists = await Credential.findOne({
+      type: "google",
+      provider: "google",
+      providerUserId: tokenInfo.sub,
+    });
+
+    if (googleCredentialExists) {
+      return res.status(400).json({
+        message: "This Google account is already linked to another account",
+      });
+    }
+
+    // Generate and send OTP for Google linking
+    await otpService.generateAndSendOTP(user._id.toString(), user.email);
+
+    res.status(200).json({
+      message: "OTP sent to your email for Google account linking",
+      email: user.email,
+    });
+  } catch (err) {
+    console.error("Link Google account error:", err);
+
+    const errorMessage = err instanceof Error ? err.message : "Server error";
+    const statusCode =
+      errorMessage.includes("Invalid") || errorMessage.includes("not verified")
+        ? 400
+        : 500;
+
+    res.status(statusCode).json({ message: errorMessage });
+  }
+};
+
+// Verify Google Link - Verify OTP and link Google to existing password account
+export const verifyGoogleLink = async (req: Request, res: Response) => {
+  console.log({ body: req.body });
+
+  try {
+    const { credential, email, otp } = req.body;
+
+    if (!credential || !email || !otp) {
+      return res.status(400).json({
+        message: "Google credential, email, and OTP are required",
+      });
+    }
+
+    // Verify Google token
+    const tokenInfo = await googleAuthService.verifyGoogleToken(credential);
+
+    // Ensure the Google email matches the provided email
+    if (tokenInfo.email.toLowerCase() !== email.toLowerCase()) {
+      return res.status(400).json({
+        message: "Google account email does not match the provided email",
+      });
+    }
+
+    // Find user
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Verify that user has password credential
+    const passwordCredential = await Credential.findOne({
+      userId: user._id,
+      type: "password",
+    });
+
+    if (!passwordCredential) {
+      return res.status(400).json({
+        message: "This account does not have password authentication",
+      });
+    }
+
+    // Check that user doesn't already have Google credential
+    const existingGoogleCredential = await Credential.findOne({
+      userId: user._id,
+      type: "google",
+    });
+
+    if (existingGoogleCredential) {
+      return res.status(400).json({
+        message: "This account already has Google authentication linked",
+      });
+    }
+
+    // Check if this Google account is already linked to another user
+    const googleCredentialExists = await Credential.findOne({
+      type: "google",
+      provider: "google",
+      providerUserId: tokenInfo.sub,
+    });
+
+    if (googleCredentialExists) {
+      return res.status(400).json({
+        message: "This Google account is already linked to another account",
+      });
+    }
+
+    // Verify OTP
+    const isValidOTP = await otpService.verifyAndConsumeOTP(
+      user._id.toString(),
+      otp,
+    );
+
+    if (!isValidOTP) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    // Create Google credential and link to password account
+    await Credential.create({
+      userId: user._id,
+      type: "google",
+      provider: "google",
+      providerUserId: tokenInfo.sub,
+      providerEmail: tokenInfo.email,
+      metadata: {
+        name: tokenInfo.name,
+        picture: tokenInfo.picture,
+        linkedAt: new Date(),
+        accountLinking: true,
+      },
+    });
+
+    // Update user profile with Google info if needed
+    const profileUpdated = await updateUserProfileFromGoogle(user, tokenInfo);
+
+    // Log account linking event for security
+    console.log(
+      `Google linking: Google account linked to password account user ${user._id} (${email})`,
+    );
+
+    // Generate tokens
+    const accessToken = generateAccessToken(user._id.toString());
+    const refreshToken = generateRefreshToken(user._id.toString());
+
+    // Return tokens and user data
+    res.status(200).json({
+      message: "Google account linked successfully to your password account",
+      accessToken,
+      refreshToken,
+      user: {
+        id: user._id,
+        email: user.email,
+        emailVerified: user.emailVerified,
+        profile: user.profile,
+      },
+      accountLinking: {
+        isNewUser: false,
+        isLinkedAccount: true,
+        profileUpdated,
+      },
+    });
+  } catch (err) {
+    console.error("Verify Google link error:", err);
+
+    const errorMessage = err instanceof Error ? err.message : "Server error";
+    const statusCode =
+      errorMessage.includes("Invalid") || errorMessage.includes("not verified")
+        ? 400
+        : 500;
+
+    res.status(statusCode).json({ message: errorMessage });
+  }
+};
+
+// Helper function to update user profile with Google information
+const updateUserProfileFromGoogle = async (
+  user: any,
+  tokenInfo: any,
+): Promise<boolean> => {
+  let profileUpdated = false;
+
+  // Ensure profile object exists
+  if (!user.profile) {
+    user.profile = {
+      firstName: "",
+      lastName: "",
+      avatarUrl: "",
+    };
+  }
+
+  // Update profile data if current data is empty/default
+  if (tokenInfo.name) {
+    const [firstName, ...lastNameParts] = tokenInfo.name.split(" ");
+
+    if (!user.profile.firstName || user.profile.firstName === "User") {
+      user.profile.firstName = firstName;
+      profileUpdated = true;
+    }
+
+    if (!user.profile.lastName && lastNameParts.length > 0) {
+      user.profile.lastName = lastNameParts.join(" ");
+      profileUpdated = true;
+    }
+  }
+
+  if (!user.profile.avatarUrl && tokenInfo.picture) {
+    user.profile.avatarUrl = tokenInfo.picture;
+    profileUpdated = true;
+  }
+
+  // Update email verification status if not already verified
+  if (!user.emailVerified) {
+    user.emailVerified = true;
+    profileUpdated = true;
+  }
+
+  if (profileUpdated) {
+    await user.save();
+  }
+
+  return profileUpdated;
 };
