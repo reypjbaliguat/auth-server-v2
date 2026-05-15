@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import Credential from "../../models/Credential";
 import User from "../../models/User";
 import { authService } from "../../services/AuthService";
 import { googleAuthService } from "../../services/GoogleAuthService";
@@ -21,9 +22,11 @@ jest.mock("../../services/AuthService");
 jest.mock("../../services/GoogleAuthService");
 jest.mock("../../services/OTPService");
 jest.mock("../../models/User");
+jest.mock("../../models/Credential");
 jest.mock("../../utils/generateToken");
 
 const mockAuthService = authService as jest.Mocked<typeof authService>;
+const mockCredential = Credential as jest.Mocked<typeof Credential>;
 const mockGoogleAuthService = googleAuthService as jest.Mocked<
   typeof googleAuthService
 >;
@@ -54,8 +57,11 @@ describe("AuthController", () => {
     // Clear all mocks
     jest.clearAllMocks();
 
+    mockCredential.findOne.mockResolvedValue(null as any);
+
     // Setup console.error mock to avoid noise in tests
     jest.spyOn(console, "error").mockImplementation();
+    jest.spyOn(console, "log").mockImplementation();
   });
 
   afterEach(() => {
@@ -98,21 +104,6 @@ describe("AuthController", () => {
       expect(mockJson).toHaveBeenCalledWith({
         message: "OTP sent to your email",
       });
-    });
-
-    it("should return success message when password added to social account", async () => {
-      mockAuthService.registerUser.mockResolvedValue({
-        success: true,
-        user: {} as any,
-      });
-
-      await register(mockReq as Request, mockRes as Response);
-
-      expect(mockStatus).toHaveBeenCalledWith(200);
-      expect(mockJson).toHaveBeenCalledWith({
-        message: "Password added to your social account",
-      });
-      expect(mockOtpService.generateAndSendOTP).not.toHaveBeenCalled();
     });
 
     it("should return error when registration fails", async () => {
@@ -193,17 +184,17 @@ describe("AuthController", () => {
       });
     });
 
-    it("should return 401 when invalid password", async () => {
+    it("should return 401 when invalid credentials", async () => {
       mockAuthService.validateCredentials.mockResolvedValue({
         success: false,
-        error: "Invalid password",
+        error: "Invalid credentials",
       });
 
       await login(mockReq as Request, mockRes as Response);
 
       expect(mockStatus).toHaveBeenCalledWith(401);
       expect(mockJson).toHaveBeenCalledWith({
-        message: "Invalid password",
+        message: "Invalid credentials",
       });
     });
 
@@ -364,6 +355,11 @@ describe("AuthController", () => {
           email: "test@example.com",
           emailVerified: true,
           profile: {},
+        },
+        accountLinking: {
+          isNewUser: false,
+          isLinkedAccount: false,
+          profileUpdated: false,
         },
       });
     });

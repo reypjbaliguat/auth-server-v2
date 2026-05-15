@@ -143,7 +143,7 @@ describe("Auth Routes - Forgot Password", () => {
       const res = await request(app).post("/v1/api/auth/reset-password").send({
         email: "nonexistent@gmail.com",
         otp: validOTP,
-        newPassword: "NewPassword123",
+        password: "NewPassword123",
       });
 
       expect(res.status).toBe(404);
@@ -154,7 +154,7 @@ describe("Auth Routes - Forgot Password", () => {
       const res = await request(app).post("/v1/api/auth/reset-password").send({
         email: testUserEmail,
         otp: "123456",
-        newPassword: "NewPassword123",
+        password: "NewPassword123",
       });
 
       expect(res.status).toBe(400);
@@ -175,7 +175,7 @@ describe("Auth Routes - Forgot Password", () => {
       const res = await request(app).post("/v1/api/auth/reset-password").send({
         email: testUserEmail,
         otp: expiredOtp,
-        newPassword: "NewPassword123",
+        password: "NewPassword123",
       });
 
       expect(res.status).toBe(400);
@@ -195,7 +195,7 @@ describe("Auth Routes - Forgot Password", () => {
       const res = await request(app).post("/v1/api/auth/reset-password").send({
         email: socialUserEmail,
         otp: otp,
-        newPassword: "NewPassword123",
+        password: "NewPassword123",
       });
 
       expect(res.status).toBe(400);
@@ -210,7 +210,7 @@ describe("Auth Routes - Forgot Password", () => {
       const res = await request(app).post("/v1/api/auth/reset-password").send({
         email: testUserEmail,
         otp: validOTP,
-        newPassword: newPassword,
+        password: newPassword,
       });
 
       expect(res.status).toBe(200);
@@ -235,14 +235,14 @@ describe("Auth Routes - Forgot Password", () => {
       await request(app).post("/v1/api/auth/reset-password").send({
         email: testUserEmail,
         otp: validOTP,
-        newPassword: "NewPassword123",
+        password: "NewPassword123",
       });
 
       // Try to use same OTP again
       const res = await request(app).post("/v1/api/auth/reset-password").send({
         email: testUserEmail,
         otp: validOTP,
-        newPassword: "AnotherPassword123",
+        password: "AnotherPassword123",
       });
 
       expect(res.status).toBe(400);

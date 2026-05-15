@@ -86,7 +86,6 @@ describe("Auth Routes - Verify OTP", () => {
       .post("/v1/api/auth/verify-otp")
 
       .send({ email: testEmail, otp: otpPlain });
-    console.log("otpPlain:", otpPlain);
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("accessToken", "mockAccessToken");
     expect(res.body).toHaveProperty("refreshToken", "mockRefreshToken");

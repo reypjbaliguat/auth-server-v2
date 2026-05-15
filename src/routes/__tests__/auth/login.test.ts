@@ -4,12 +4,18 @@ import Credential from "../../../models/Credential";
 import User from "../../../models/User";
 import "../../../tests/setup/db";
 import { hashPassword } from "../../../utils/hashPassword";
+import * as sendEmailModule from "../../../utils/sendEmail";
+
+jest.mock("../../../utils/sendEmail");
+const mockSendEmail = jest.mocked(sendEmailModule.sendEmail);
 
 describe("Auth Routes - Login", () => {
   const testUserEmail = "test@gmail.com";
   const testUserPassword = "TestPassword123";
 
   beforeEach(async () => {
+    mockSendEmail.mockReset();
+    mockSendEmail.mockResolvedValue({ id: "email-id" } as any);
     // Clean DB already handled by setup/db
     // But create a fresh user for every test
     const passwordHash = await hashPassword(testUserPassword);
@@ -31,14 +37,14 @@ describe("Auth Routes - Login", () => {
     expect(res.body).toHaveProperty("message");
     expect(res.body.message).toMatch(/User not found/i);
   });
-  it("should send invalid password if password is wrong", async () => {
+  it("should return invalid credentials if password is wrong", async () => {
     const res = await request(app).post("/v1/api/auth/login").send({
       email: testUserEmail,
       password: "WrongPassword123",
     });
     expect(res.status).toBe(401);
     expect(res.body).toHaveProperty("message");
-    expect(res.body.message).toMatch(/Invalid password/i);
+    expect(res.body.message).toMatch(/Invalid credentials/i);
   });
   it("should login successfully and send OTP", async () => {
     const res = await request(app).post("/v1/api/auth/login").send({
