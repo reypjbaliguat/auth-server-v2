@@ -1,3 +1,4 @@
+import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import rateLimit from "express-rate-limit";
@@ -7,11 +8,19 @@ const app = express();
 // Configure CORS for a specific origin and allow credentials
 
 //add production url to allowed origins
-const allowedOrigins = [
+const defaultOrigins = [
   "http://localhost:3000",
   "https://auth-client-v2-4zfv-git-main-reypjbaliguats-projects.vercel.app",
   "https://auth-client-v2-4zfv.vercel.app",
 ];
+
+const configuredOrigins = (process.env.FRONTEND_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const allowedOrigins =
+  configuredOrigins.length > 0 ? configuredOrigins : defaultOrigins;
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -24,14 +33,15 @@ const limiter = rateLimit({
 
 app.use(
   cors({
-    origin: allowedOrigins, // Explicitly allow your frontend's origin
+    origin: allowedOrigins,
     credentials: true, // Allow cookies, authorization headers, etc.
-    methods: ["GET", "POST", "PUT", "DELETE"], // Specify allowed methods
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"], // Specify allowed methods
     allowedHeaders: ["Content-Type", "Authorization"], // Specify allowed headers
   }),
 );
 
 app.use(limiter);
+app.use(cookieParser());
 app.use(express.json());
 app.use("/v1/api/auth", authRoutes);
 

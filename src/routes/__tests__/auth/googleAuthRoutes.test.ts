@@ -1,10 +1,10 @@
 import request from "supertest";
 import app from "../../../app";
 import Credential from "../../../models/Credential";
-import User from "../../../models/User";
 import OTP from "../../../models/OTP";
-import "../../../tests/setup/db";
+import User from "../../../models/User";
 import { googleAuthService } from "../../../services/GoogleAuthService";
+import "../../../tests/setup/db";
 import { createOTP } from "../../../utils/generateOTP";
 import { hashPassword } from "../../../utils/hashPassword";
 import * as sendEmailModule from "../../../utils/sendEmail";
@@ -58,7 +58,10 @@ describe("Auth Routes - Google login", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.accessToken).toBe("mockAccessToken");
-    expect(res.body.refreshToken).toBe("mockRefreshToken");
+    expect(res.body.refreshToken).toBeUndefined();
+    expect(String(res.headers["set-cookie"])).toContain(
+      "refreshToken=mockRefreshToken",
+    );
     expect(res.body.message).toBe("Login successful");
     expect(mockGoogle.verifyGoogleToken).toHaveBeenCalledWith("fake-jwt");
     expect(mockGoogle.processGoogleLogin).toHaveBeenCalled();

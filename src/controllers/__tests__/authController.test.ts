@@ -4,10 +4,8 @@ import User from "../../models/User";
 import { authService } from "../../services/AuthService";
 import { googleAuthService } from "../../services/GoogleAuthService";
 import { otpService } from "../../services/OTPService";
-import {
-  generateAccessToken,
-  generateRefreshToken,
-} from "../../utils/generateToken";
+import { refreshTokenService } from "../../services/RefreshTokenService";
+import { generateAccessToken } from "../../utils/generateToken";
 import {
   getOTPStatus,
   googleLogin,
@@ -21,6 +19,7 @@ import {
 jest.mock("../../services/AuthService");
 jest.mock("../../services/GoogleAuthService");
 jest.mock("../../services/OTPService");
+jest.mock("../../services/RefreshTokenService");
 jest.mock("../../models/User");
 jest.mock("../../models/Credential");
 jest.mock("../../utils/generateToken");
@@ -31,12 +30,12 @@ const mockGoogleAuthService = googleAuthService as jest.Mocked<
   typeof googleAuthService
 >;
 const mockOtpService = otpService as jest.Mocked<typeof otpService>;
+const mockRefreshTokenService = refreshTokenService as jest.Mocked<
+  typeof refreshTokenService
+>;
 const mockUser = User as jest.Mocked<typeof User>;
 const mockGenerateAccessToken = generateAccessToken as jest.MockedFunction<
   typeof generateAccessToken
->;
-const mockGenerateRefreshToken = generateRefreshToken as jest.MockedFunction<
-  typeof generateRefreshToken
 >;
 
 describe("AuthController", () => {
@@ -44,14 +43,17 @@ describe("AuthController", () => {
   let mockRes: Partial<Response>;
   let mockStatus: jest.Mock;
   let mockJson: jest.Mock;
+  let mockCookie: jest.Mock;
 
   beforeEach(() => {
     mockStatus = jest.fn().mockReturnThis();
     mockJson = jest.fn().mockReturnThis();
+    mockCookie = jest.fn().mockReturnThis();
 
     mockRes = {
       status: mockStatus,
       json: mockJson,
+      cookie: mockCookie,
     };
 
     // Clear all mocks
@@ -234,7 +236,11 @@ describe("AuthController", () => {
       mockUser.findOne.mockResolvedValue(mockUserDoc);
       mockOtpService.verifyAndConsumeOTP.mockResolvedValue(true);
       mockGenerateAccessToken.mockReturnValue("access-token");
-      mockGenerateRefreshToken.mockReturnValue("refresh-token");
+      mockRefreshTokenService.issueSession.mockResolvedValue({
+        token: "refresh-token",
+        jti: "11111111-1111-1111-1111-111111111111",
+        familyId: "family-1",
+      });
 
       await verifyUserOTP(mockReq as Request, mockRes as Response);
 
@@ -248,10 +254,15 @@ describe("AuthController", () => {
       expect(mockUserDoc.emailVerified).toBe(true);
       expect(mockUserDoc.save).toHaveBeenCalled();
       expect(mockStatus).toHaveBeenCalledWith(200);
+      expect(mockCookie).toHaveBeenCalled();
       expect(mockJson).toHaveBeenCalledWith({
         accessToken: "access-token",
-        refreshToken: "refresh-token",
-        user: mockUserDoc,
+        user: {
+          id: "user123",
+          email: "test@example.com",
+          emailVerified: true,
+          profile: undefined,
+        },
       });
     });
 
@@ -266,7 +277,11 @@ describe("AuthController", () => {
       mockUser.findOne.mockResolvedValue(mockUserDoc);
       mockOtpService.verifyAndConsumeOTP.mockResolvedValue(true);
       mockGenerateAccessToken.mockReturnValue("access-token");
-      mockGenerateRefreshToken.mockReturnValue("refresh-token");
+      mockRefreshTokenService.issueSession.mockResolvedValue({
+        token: "refresh-token",
+        jti: "11111111-1111-1111-1111-111111111111",
+        familyId: "family-1",
+      });
 
       await verifyUserOTP(mockReq as Request, mockRes as Response);
 
@@ -336,7 +351,11 @@ describe("AuthController", () => {
         },
       });
       mockGenerateAccessToken.mockReturnValue("access-token");
-      mockGenerateRefreshToken.mockReturnValue("refresh-token");
+      mockRefreshTokenService.issueSession.mockResolvedValue({
+        token: "refresh-token",
+        jti: "11111111-1111-1111-1111-111111111111",
+        familyId: "family-1",
+      });
 
       await googleLogin(mockReq as Request, mockRes as Response);
 
@@ -346,9 +365,9 @@ describe("AuthController", () => {
       expect(mockGoogleAuthService.processGoogleLogin).toHaveBeenCalledWith(
         mockTokenInfo,
       );
+      expect(mockCookie).toHaveBeenCalled();
       expect(mockJson).toHaveBeenCalledWith({
         accessToken: "access-token",
-        refreshToken: "refresh-token",
         message: "Login successful",
         user: {
           id: "user123",

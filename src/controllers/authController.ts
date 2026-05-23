@@ -4,11 +4,22 @@ import User from "../models/User";
 import { authService } from "../services/AuthService";
 import { googleAuthService } from "../services/GoogleAuthService";
 import { otpService } from "../services/OTPService";
+import { refreshTokenService } from "../services/RefreshTokenService";
 import {
-  generateAccessToken,
-  generateRefreshToken,
-} from "../utils/generateToken";
+  clearRefreshCookie,
+  getRefreshCookieName,
+  setRefreshCookie,
+} from "../utils/authCookies";
+import { sendUnauthorized } from "../utils/authErrors";
+import { generateAccessToken } from "../utils/generateToken";
 import { hashPassword } from "../utils/hashPassword";
+
+const toPublicUser = (user: any) => ({
+  id: user._id,
+  email: user.email,
+  emailVerified: user.emailVerified,
+  profile: user.profile,
+});
 
 export const register = async (req: Request, res: Response) => {
   try {
@@ -82,12 +93,83 @@ export const verifyUserOTP = async (req: Request, res: Response) => {
     }
 
     const accessToken = generateAccessToken(user._id.toString());
-    const refreshToken = generateRefreshToken(user._id.toString());
+    const refreshSession = await refreshTokenService.issueSession(
+      user._id.toString(),
+    );
+    setRefreshCookie(res, refreshSession.token);
 
-    res.status(200).json({ accessToken, refreshToken, user });
+    res.status(200).json({ accessToken, user: toPublicUser(user) });
   } catch (err) {
     console.error("VerifyOTP error:", err);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const refreshAccessToken = async (req: Request, res: Response) => {
+  try {
+    const refreshToken = req.cookies?.[getRefreshCookieName()];
+    if (!refreshToken) {
+      clearRefreshCookie(res);
+      return sendUnauthorized(res);
+    }
+
+    const rotated = await refreshTokenService.rotateSession(refreshToken);
+    if (!rotated.success) {
+      clearRefreshCookie(res);
+      return sendUnauthorized(res);
+    }
+
+    const user = await User.findById(rotated.userId);
+    if (!user || !user.isActive) {
+      clearRefreshCookie(res);
+      return sendUnauthorized(res);
+    }
+
+    const accessToken = generateAccessToken(user._id.toString());
+    setRefreshCookie(res, rotated.token);
+
+    return res.status(200).json({
+      accessToken,
+      user: toPublicUser(user),
+    });
+  } catch (err) {
+    console.error("Refresh token error:", err);
+    clearRefreshCookie(res);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const getMe = async (req: Request, res: Response) => {
+  try {
+    if (!req.authUserId) {
+      return sendUnauthorized(res);
+    }
+
+    const user = await User.findById(req.authUserId);
+    if (!user || !user.isActive) {
+      return sendUnauthorized(res);
+    }
+
+    return res.status(200).json({ user: toPublicUser(user) });
+  } catch (err) {
+    console.error("GetMe error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const logout = async (req: Request, res: Response) => {
+  try {
+    const refreshToken = req.cookies?.[getRefreshCookieName()];
+    if (refreshToken) {
+      await refreshTokenService.revokeByToken(refreshToken);
+    }
+
+    clearRefreshCookie(res);
+    return res.status(200).json({ message: "Logged out" });
+  } catch (err) {
+    console.error("Logout error:", err);
+    clearRefreshCookie(res);
+    return res.status(200).json({ message: "Logged out" });
   }
 };
 
@@ -139,19 +221,16 @@ export const googleLogin = async (req: Request, res: Response) => {
 
     // Generate tokens
     const accessToken = generateAccessToken(user._id.toString());
-    const refreshToken = generateRefreshToken(user._id.toString());
+    const refreshSession = await refreshTokenService.issueSession(
+      user._id.toString(),
+    );
+    setRefreshCookie(res, refreshSession.token);
 
     // Return comprehensive response with linking information
     res.json({
       accessToken,
-      refreshToken,
       message,
-      user: {
-        id: user._id,
-        email: user.email,
-        emailVerified: user.emailVerified,
-        profile: user.profile,
-      },
+      user: toPublicUser(user),
       // Provide metadata for client-side UX decisions
       accountLinking: {
         isNewUser: metadata?.isNewUser || false,
@@ -418,19 +497,16 @@ export const verifyPasswordLink = async (req: Request, res: Response) => {
 
     // Generate tokens
     const accessToken = generateAccessToken(user._id.toString());
-    const refreshToken = generateRefreshToken(user._id.toString());
+    const refreshSession = await refreshTokenService.issueSession(
+      user._id.toString(),
+    );
+    setRefreshCookie(res, refreshSession.token);
 
     // Return tokens and user data
     res.status(200).json({
       message: "Password linked successfully to your Google account",
       accessToken,
-      refreshToken,
-      user: {
-        id: user._id,
-        email: user.email,
-        emailVerified: user.emailVerified,
-        profile: user.profile,
-      },
+      user: toPublicUser(user),
     });
   } catch (err) {
     console.error("Verify password link error:", err);
@@ -624,19 +700,16 @@ export const verifyGoogleLink = async (req: Request, res: Response) => {
 
     // Generate tokens
     const accessToken = generateAccessToken(user._id.toString());
-    const refreshToken = generateRefreshToken(user._id.toString());
+    const refreshSession = await refreshTokenService.issueSession(
+      user._id.toString(),
+    );
+    setRefreshCookie(res, refreshSession.token);
 
     // Return tokens and user data
     res.status(200).json({
       message: "Google account linked successfully to your password account",
       accessToken,
-      refreshToken,
-      user: {
-        id: user._id,
-        email: user.email,
-        emailVerified: user.emailVerified,
-        profile: user.profile,
-      },
+      user: toPublicUser(user),
       accountLinking: {
         isNewUser: false,
         isLinkedAccount: true,

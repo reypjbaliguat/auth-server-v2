@@ -88,7 +88,10 @@ describe("Auth Routes - Verify OTP", () => {
       .send({ email: testEmail, otp: otpPlain });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("accessToken", "mockAccessToken");
-    expect(res.body).toHaveProperty("refreshToken", "mockRefreshToken");
+    expect(res.body).not.toHaveProperty("refreshToken");
+    expect(String(res.headers["set-cookie"])).toContain(
+      "refreshToken=mockRefreshToken",
+    );
 
     // verify otp is marked used
     const updatedRecord = await OTP.findOne({ userId: user._id });
